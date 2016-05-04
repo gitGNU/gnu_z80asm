@@ -21,6 +21,10 @@
 
 #include "z80asm.h"
 
+#include "error.h"
+#include "stack.h"
+#include "stringstore.h"
+
 /* global variables */
 /* mnemonics, used as argument to indx() in assemble */
 const char *mnemonics[] = {
@@ -43,18 +47,6 @@ struct label *firstlabel = NULL, *lastlabel = NULL;
 struct name *firstname = NULL;
 struct includedir *firstincludedir = NULL;
 struct macro *firstmacro = NULL;
-
-/* files */
-FILE *realoutputfile, *outfile, *reallistfile, *listfile, *labelfile;
-const char *realoutputfilename;
-const char *labelfilename;
-struct infile *infile;
-/* prefix for labels in labelfile */
-const char *labelprefix = "";
-/* bools to see if files are opened */
-int havelist = 0, label = 0;
-/* number of infiles in array */
-int infilecount;
 
 /* number of errors seen so far */
 int errors = 0;
@@ -92,32 +84,8 @@ char *buffer = NULL;
 /* if a macro is currently being defined */
 int define_macro = 0;
 
-/* file (and macro) stack */
-int sp;
-struct stack stack[MAX_INCLUDE];	/* maximum level of includes */
-
 /* Produce output even with errors.  */
 int use_force = 0;
-
-/* print an error message, including current line and file */
-void
-printerr (int error, const char *fmt, ...)
-{
-  va_list l;
-  va_start (l, fmt);
-  if ((sp < 0) || (stack[sp].name == 0))
-    {
-      fprintf (stderr, "internal assembler error, sp == %i\n", sp);
-      vfprintf (stderr, fmt, l);
-      exit (2);
-    }
-  fprintf (stderr, "%s%s:%d: %s: ", stack[sp].dir ? stack[sp].dir->name : "",
-	   stack[sp].name, stack[sp].line, error ? "error" : "warning");
-  vfprintf (stderr, fmt, l);
-  va_end (l);
-  if (error)
-    errors++;
-}
 
 /* skip over spaces in string */
 const char *
@@ -164,283 +132,11 @@ skipword (const char **pos, char delimiter)
   rd_expr (pos, delimiter, &valid, sp, 0);
 }
 
-/* callback function for argument parser, used to open output files. */
-static FILE *
-openfile (int *done,		/* flag to check that a file is opened only once. */
-	  const char *type,	/* name of filetype for error message */
-	  FILE * def,		/* default value, in case "-" is specified */
-	  const char *name,	/* filename to open */
-	  const char *flags)	/* open flags */
-{
-  FILE *retval;
-  if (*done)
-    {
-      fprintf (stderr, "Error: more than one %s specified\n", type);
-      exit (1);
-    }
-  *done = 1;
-  if (def && (!name || (name[0] == '-' && name[1] == 0)))
-    {
-      return def;
-    }
-  if (!name || !name[0])
-    {
-      fprintf (stderr, "Error: no %s specified\n", type);
-      exit (1);
-    }
-  if (!(retval = fopen (name, flags)))
-    {
-      fprintf (stderr, "Unable to open %s %s: %s\n",
-	       type, name, strerror (errno));
-      exit (1);
-    }
-  return retval;
-}
-
-/* open an included file, searching the path */
-static FILE *
-open_include_file (const char *name, struct includedir **dir,
-		   const char *flags)
-{
-  FILE *result;
-  struct includedir *i;
-  /* always try the current directory first */
-  result = fopen (name, flags);
-  if (result)
-    {
-      if (dir)
-	*dir = NULL;
-      return result;
-    }
-  for (i = firstincludedir; i != NULL; i = i->next)
-    {
-      char *tmp = malloc (strlen (i->name) + strlen (name) + 1);
-      if (!tmp)
-	{
-	  printerr (1, "not enough memory trying to open include file\n");
-	  return NULL;
-	}
-      strcpy (tmp, i->name);
-      strcat (tmp, name);
-      result = fopen (tmp, flags);
-      free (tmp);
-      if (result)
-	{
-	  if (dir)
-	    *dir = i;
-	  return result;
-	}
-    }
-  return NULL;
-}
-
-/* queue a file to be opened for reading */
-static void
-open_infile (const char *name)
-{
-  infile = realloc (infile, sizeof (struct infile) * (infilecount + 1));
-  if (!infile)
-    {
-      fprintf (stderr, "Error: insufficient memory\n");
-      exit (1);
-    }
-  /* only asm is currently supported */
-  infile[infilecount].type = FILETYPE_ASM;
-  infile[infilecount].name = name;
-  if (verbose >= 5)
-    fprintf (stderr, "queued inputfile %s\n", infile[infilecount].name);
-  infilecount++;
-}
-
-/* add a directory to the include search path */
-static void
-add_include (const char *name)
-{
-  struct includedir *i;
-  i = malloc (sizeof (struct includedir) + strlen (name) + 1);
-  if (!i)
-    {
-      fprintf (stderr, "Error: insufficient memory\n");
-      exit (1);
-    }
-  strcpy (i->name, name);
-  if (name[strlen (name) - 1] != '/')
-    strcat (i->name, "/");
-  i->next = firstincludedir;
-  firstincludedir = i;
-}
-
-static void
-try_use_real_file (FILE * real, FILE ** backup)
-{
-  fpos_t pos;
-  if (fgetpos (real, &pos) == 0)
-    {
-      *backup = real;
-      return;
-    }
-  if (!(*backup = tmpfile ()))
-    {
-      fprintf (stderr, "Error: Unable to open temporary file: %s\n",
-	       strerror (errno));
-      exit (1);
-    }
-}
-
-static void
-flush_to_real_file (FILE * real, FILE * tmp)
-{
-  int l, size, len = 0;
-  char buf[BUFLEN];
-  if (tmp == real)
-    {
-      return;
-    }
-  rewind (tmp);
-  while (1)
-    {
-      clearerr (tmp);
-      errno = 0;
-      len = fread (buf, 1, BUFLEN, tmp);
-      if (len == 0 && feof (tmp))
-	break;
-      if (len <= 0)
-	{
-	  fprintf (stderr, "error reading temp file: %s\n", strerror (errno));
-	  exit (1);
-	}
-      l = 0;
-      while (l < len)
-	{
-	  clearerr (real);
-	  size = fwrite (&buf[l], 1, len - l, real);
-	  if (size <= 0)
-	    {
-	      fprintf (stderr, "error writing final file: %s\n",
-		       strerror (errno));
-	      exit (1);
-	    }
-	  l += size;
-	}
-    }
-}
-
-/* parse commandline arguments */
-static void
-parse_commandline (int argc, char **argv)
-{
-  const struct option opts[] = {
-    {"help", no_argument, NULL, 'h'},
-    {"version", no_argument, NULL, 'V'},
-    {"verbose", no_argument, NULL, 'v'},
-    {"list", optional_argument, NULL, 'l'},
-    {"label", optional_argument, NULL, 'L'},
-    {"input", required_argument, NULL, 'i'},
-    {"output", required_argument, NULL, 'o'},
-    {"label-prefix", required_argument, NULL, 'p'},
-    {"includepath", required_argument, NULL, 'I'},
-    {"force", no_argument, NULL, 'f'},
-    {NULL, 0, NULL, 0}
-  };
-  const char *short_opts = "hVvl::L::i:o:p:I:f";
-  int done = 0, i, out = 0;
-  infile = NULL;
-  while (!done)
-    {
-      switch (getopt_long (argc, argv, short_opts, opts, NULL))
-	{
-	case 'h':
-	  /* split in two, to avoid too long string constant */
-	  printf ("Usage: %s [options] [input files]\n"
-		  "\n"
-		  "Possible options are:\n"
-		  "-h\t--help\t\tDisplay this help text and exit.\n"
-		  "-V\t--version\tDisplay version information and exit.\n"
-		  "-v\t--verbose\tBe verbose.  "
-		  "Specify again to be more verbose.\n"
-		  "-l\t--list\t\tWrite a list file.\n"
-		  "-L\t--label\t\tWrite a label file.\n", argv[0]);
-	  printf ("-p\t--label-prefix\tprefix all labels with this prefix.\n"
-		  "-i\t--input\t\tSpecify an input file (-i may be omitted).\n"
-		  "-o\t--output\tSpecify the output file.\n"
-		  "-I\t--includepath\tAdd a directory to the include path.\n"
-		  "Please send bug reports and feature requests to "
-		  "<shevek@fmf.nl>\n");
-	  exit (0);
-	case 'V':
-	  printf ("Z80 assembler version " VERSION "\n"
-		  "Copyright (C) 2002-2007 Bas Wijnen "
-		  "<shevek@fmf.nl>.\n"
-		  "Copyright (C) 2005 Jan Wilmans "
-		  "<jw@dds.nl>.\n"
-		  "This program comes with ABSOLUTELY NO WARRANTY.\n"
-		  "You may distribute copies of the program under the terms\n"
-		  "of the GNU General Public License as published by\n"
-		  "the Free Software Foundation; either version 2 of the\n"
-		  "License, or (at your option) any later version.\n\n"
-		  "The complete text of the GPL can be found in\n"
-		  "/usr/share/common-licenses/GPL.\n");
-	  exit (0);
-	case 'v':
-	  verbose++;
-	  if (verbose >= 5)
-	    fprintf (stderr, "Verbosity increased to level %d\n", verbose);
-	  break;
-	case 'o':
-	  realoutputfile
-	    = openfile (&out, "output file", stdout, optarg, "wb");
-	  realoutputfilename = optarg;
-	  if (verbose >= 5)
-	    fprintf (stderr, "Opened outputfile\n");
-	  break;
-	case 'i':
-	  open_infile (optarg);
-	  break;
-	case 'l':
-	  reallistfile
-	    = openfile (&havelist, "list file", stderr, optarg, "w");
-	  if (verbose >= 5)
-	    fprintf (stderr, "Opened list file\n");
-	  break;
-	case 'L':
-	  labelfile = openfile (&label, "label file", stderr, optarg, "w");
-	  labelfilename = optarg;
-	  if (verbose >= 5)
-	    fprintf (stderr, "Opened label file\n");
-	  break;
-	case 'p':
-	  labelprefix = optarg;
-	  break;
-	case 'I':
-	  add_include (optarg);
-	  break;
-	case 'f':
-	  use_force = 1;
-	  break;
-	case -1:
-	  done = 1;
-	  break;
-	default:
-	  /* errors are handled by getopt_long */
-	  break;
-	}
-    }
-  for (i = optind; i < argc; ++i)
-    open_infile (argv[i]);
-  if (!infilecount)
-    open_infile ("-");
-  if (!out)
-    realoutputfile = openfile (&out, "output file", stdout, "a.bin", "wb");
-  try_use_real_file (realoutputfile, &outfile);
-  if (havelist)
-    try_use_real_file (reallistfile, &listfile);
-}
-
 /* find any of the list[] entries as the start of ptr and return index */
 static int
 indx (const char **ptr, const char **list, int error, const char **expr)
 {
-  int i, l;
+  int i;
   *ptr = delspc (*ptr);
   if (!**ptr)
     {
@@ -461,7 +157,7 @@ indx (const char **ptr, const char **list, int error, const char **expr)
       int had_expr = 0;
       if (!list[i][0])
 	continue;
-      l = strlen (list[i]);
+
       while (*check)
 	{
 	  if (*check == ' ')
@@ -538,20 +234,29 @@ readlabel (const char **p, int store)
   const char *c, *d, *pos, *dummy;
   int i, j;
   struct label *buf, *previous, **thefirstlabel;
+  /* move d to end of statement or line */
   for (d = *p; *d && *d != ';'; ++d)
     {
     }
+
+  /* move c to whitespace or eol */
   for (c = *p; !strchr (" \r\n\t", *c) && c < d; ++c)
     {
     }
+  /* find label terminator */
   pos = strchr (*p, ':');
+  /* if not found or equal c (?) ignore */
   if (!pos || pos >= c)
     return;
+
   if (pos == *p)
     {
       printerr (1, "`:' found without a label");
       return;
     }
+
+  /* don't store, just skip... */
+  /* how is this supposed to work with local macro labels? */
   if (!store)
     {
       *p = pos + 1;
@@ -572,18 +277,32 @@ readlabel (const char **p, int store)
       *p = c;
       return;
     }
-  strncpy (buf->name, *p, c - *p - 1);
-  buf->name[c - *p - 1] = 0;
+  buf->name = stringstore_add(*p, c - *p - 1);
+
   if (verbose >= 3)
     fprintf (stderr, "%5d (0x%04x): Label found: %s\n", stack[sp].line,
-	     addr, buf->name);
+	     addr, stringstore_get(buf->name));
   *p = c;
   buf->value = addr;
   lastlabel = buf;
-  if (buf->name[0] == '.')
-    thefirstlabel = &stack[sp].labels;
-  else
+  if (stringstore_get(buf->name)[0] == '.') {
+    if (define_macro) {
+      struct label *pv;
+
+      thefirstlabel = &(firstmacro->labels);
+      pv = *thefirstlabel;
+
+      if(pv) while (pv->next) {
+	pv = pv->next;
+      }
+      previous = pv;
+    } else {
+      thefirstlabel = &stack[sp].labels;
+    }
+  } else {
     thefirstlabel = &firstlabel;
+  }
+
   if (previous)
     buf->next = previous->next;
   else
@@ -744,26 +463,17 @@ new_reference (const char *p, int type, char delimiter, int ds_count)
 	  printerr (1, "unable to allocate memory for reference %s\n", p);
 	  return;
 	}
-      tmp->file = malloc (strlen (stack[sp].name) + 1);
-      if (!tmp->file)
-	{
-	  printerr (1, "unable to allocate memory for reference filename\n");
-	  free (tmp);
-	  return;
-	}
-      strcpy (tmp->file, stack[sp].name);
+      tmp->file = stack[sp].name;
       if (stack[sp].dir)
 	{
-	  tmp->dir = malloc (strlen (stack[sp].dir->name)
-			  + sizeof (struct includedir));
+	  tmp->dir = calloc (1, sizeof (struct includedir));
 	  if (!tmp->dir)
 	    {
 	      printerr (1, "unable to allocate memory for reference dir\n");
-	      free (tmp->file);
 	      free (tmp);
 	      return;
 	    }
-	  strcpy (tmp->dir->name, stack[sp].dir->name);
+	  tmp->dir->name = stack[sp].dir->name;
 	}
       else
 	tmp->dir = NULL;
@@ -1437,40 +1147,36 @@ wrt_ref (int val, int type, int count)
     }
 }
 
-static char *
+static int
 get_include_name (const char **ptr)
 {
-  int pos = 0;
   char quote;
-  char *name;
+  const char *name_start;
+
+  int iname;
   *ptr = delspc (*ptr);
-  name = malloc (strlen (*ptr));
-  if (!name)
-    {
-      printerr (1, "unable to allocate memory for filename %.*s\n",
-		strlen (*ptr) - 1, *ptr);
-      return NULL;
-    }
+
   if (!**ptr)
     {
       printerr (1, "include without filename\n");
-      free (name);
-      return NULL;
+      return -1;
     }
   quote = *(*ptr)++;
+  name_start = *ptr;
+
   while (**ptr != quote)
     {
       if (!**ptr)
 	{
 	  printerr (1, "filename without closing quote (%c)\n", quote);
-	  free (name);
-	  return NULL;
+	  return -1;
 	}
-      name[pos++] = *(*ptr)++;
+      (*ptr)++;
     }
-  name[pos] = 0;
-  ++*ptr;
-  return name;
+  iname = stringstore_add(name_start, *ptr - name_start);
+
+  ++(*ptr);
+  return iname;
 }
 
 static int
@@ -1478,6 +1184,8 @@ read_line (void)
 {
   unsigned pos, newpos, size;
   struct macro_arg *arg;
+  const char *current_line;
+
   if (stack[sp].file)
     {
       FILE *f = stack[sp].file;
@@ -1518,18 +1226,18 @@ read_line (void)
 	  buffer = b;
 	}
     }
-  /* macro line */
+  /* end of macro line, cleanup args (?) */
   if (!stack[sp].macro_line)
     {
-      unsigned i;
-      for (i = 0; i < stack[sp].macro->numargs; ++i)
-	free (stack[sp].macro_args[i]);
       free (stack[sp].macro_args);
       return 0;
     }
-  size = strlen (stack[sp].macro_line->line) + 1;
+  current_line = stringstore_get(stack[sp].macro_line->line);
+  size = strlen (current_line) + 1;
+
   for (arg = stack[sp].macro_line->args; arg; arg = arg->next)
-    size += strlen (stack[sp].macro_args[arg->which]);
+    size += strlen (stringstore_get(stack[sp].macro_args[arg->which]));
+
   buffer = malloc (size);
   if (!buffer)
     {
@@ -1538,43 +1246,57 @@ read_line (void)
     }
   pos = 0;
   newpos = 0;
+
   for (arg = stack[sp].macro_line->args; arg; arg = arg->next)
     {
-      memcpy (&buffer[newpos], &stack[sp].macro_line->line[pos],
+      const char *argstr = stringstore_get(stack[sp].macro_args[arg->which]);
+      memcpy (&buffer[newpos], &current_line[pos],
 	      arg->pos - pos);
       newpos += arg->pos - pos;
-      strcpy (&buffer[newpos], stack[sp].macro_args[arg->which]);
-      newpos += strlen (stack[sp].macro_args[arg->which]);
-      pos = arg->pos + 1;
+      strcpy (&buffer[newpos], argstr);
+      newpos += strlen (argstr);
+      pos = arg->pos + strlen(stringstore_get(stack[sp].macro->args[arg->which]));
     }
-  strcpy (&buffer[newpos], &stack[sp].macro_line->line[pos]);
+  strcpy (&buffer[newpos], &current_line[pos]);
   stack[sp].macro_line = stack[sp].macro_line->next;
   return 1;
 }
 
 static unsigned
-get_macro_args (const char **ptr, char ***ret_args, int allow_empty)
+get_macro_args (const char **ptr, int **ret_args, int allow_empty)
 {
   unsigned numargs = 0;
   *ret_args = NULL;
-  while (1)
+  while (**ptr)
     {
-      char **args;
-      const char *c;
+      int *args;
+      const char *start_arg, *end_arg;
+      int arg_len;
+
       *ptr = delspc (*ptr);
-      if (!**ptr)
+      if (!**ptr || **ptr == ';')
 	break;
-      c = *ptr;
-      for (; **ptr && !strchr (" \r\n\t,;", **ptr); ++*ptr)
-	{
-	}
-      if (*ptr == c && !allow_empty)
+      start_arg = *ptr;
+      /* increase pointer while name characters follow... */
+      while(**ptr && !isspace(**ptr) && **ptr != ',' && **ptr != ';') {
+	++*ptr;
+      }
+      end_arg = *ptr;
+
+      /* skip whitespace and comma for next arg. */
+      while(**ptr && (isspace(**ptr) || **ptr == ',') && **ptr != ';') {
+	++*ptr;
+      }
+
+      arg_len = end_arg - start_arg;
+
+      if (arg_len == 0 && !allow_empty)
 	{
 	  printerr (1, "empty macro argument\n");
 	  break;
 	}
       ++numargs;
-      args = realloc (*ret_args, sizeof (char *) * numargs);
+      args = realloc (*ret_args, sizeof (int) * numargs);
       if (!args)
 	{
 	  printerr (1, "out of memory\n");
@@ -1582,21 +1304,21 @@ get_macro_args (const char **ptr, char ***ret_args, int allow_empty)
 	  break;
 	}
       *ret_args = args;
-      args[numargs - 1] = malloc (*ptr - c + 1);
-      if (!args[numargs - 1])
+
+      args[numargs - 1] = stringstore_add(start_arg, arg_len);
+
+      if (args[numargs - 1] < 0)
 	{
 	  printerr (1, "out of memory\n");
 	  --numargs;
 	  break;
 	}
-      memcpy (args[numargs - 1], c, *ptr - c);
-      args[numargs - 1][*ptr - c] = 0;
     }
   return numargs;
 }
 
 /* do the actual work */
-static void
+void
 assemble (void)
 {
   int ifcount = 0, noifcount = 0;
@@ -1608,27 +1330,30 @@ assemble (void)
   for (file = 0; file < infilecount; ++file)
     {
       int file_ended = 0;
+      const char *infilename = stringstore_get(infile[file].name);
+
       sp = 0;			/* clear stack */
       stack[sp].line = 0;
       stack[sp].shouldclose = 0;
       stack[sp].name = infile[file].name;
       stack[sp].dir = NULL;
-      if (infile[file].name[0] == '-' && infile[file].name[1] == 0)
+
+      if (infilename && strlen(infilename) > 0 && infilename[0] == '-' && infilename[1] == 0)
 	{
 	  stack[sp].file = stdin;
 	}
       else
 	{
-	  stack[sp].file = fopen (infile[file].name, "r");
+	  stack[sp].file = fopen (infilename, "r");
 	  if (!stack[sp].file)
 	    {
-	      printerr (1, "unable to open %s. skipping\n", infile[file].name);
+	      printerr (1, "unable to open %s. skipping\n", infilename);
 	      continue;
 	    }
 	  stack[sp].shouldclose = 1;
 	}
       if (havelist)
-	fprintf (listfile, "# File %s\n", stack[sp].name);
+	fprintf (listfile, "# File %s\n", infilename);
       if (buffer)
 	buffer[0] = 0;
       /* loop until this source file is done */
@@ -1671,18 +1396,20 @@ assemble (void)
 	    {
 	      struct reference *ref, *nextref;
 	      struct label *next;
+	      const char *cur_file = stringstore_get(stack[sp].name);
 	      if (verbose >= 6)
 		fprintf (stderr, "finished reading file %s\n",
-			 stack[sp].name);
+			 cur_file);
 	      if (havelist)
 		{
 		  if (stack[sp].file)
-		    fprintf (listfile, "# End of file %s\n", stack[sp].name);
+		    fprintf (listfile, "# End of file %s\n", cur_file);
 		  else
-		    fprintf (listfile, "# End of macro %s\n", stack[sp].name);
+		    fprintf (listfile, "# End of macro %s\n", cur_file);
 		}
 	      if (stack[sp].shouldclose)
 		fclose (stack[sp].file);
+
 	      /* the top of stack is about to be popped off, throwing all
 	       * local labels out of scope.  All references at this level
 	       * which aren't computable are errors.  */
@@ -1710,6 +1437,8 @@ assemble (void)
 	      for (l = stack[sp].labels; l; l = next)
 		{
 		  next = l->next;
+		  if (verbose >= 7)
+		    fprintf(stderr, "discarding label %s\n", stringstore_get(l->name));
 		  if (l->ref)
 		    free (l->ref);
 		  free (l);
@@ -1736,7 +1465,7 @@ assemble (void)
 	  ptr = delspc (ptr);
 	  if (!*ptr)
 	    continue;
-	  if (!noifcount && !define_macro)
+	  if (!noifcount)
 	    readlabel (&ptr, 1);
 	  else
 	    readlabel (&ptr, 0);
@@ -1772,8 +1501,14 @@ assemble (void)
 	    }
 	  if (define_macro)
 	    {
-	      char *newptr;
+	      unsigned int i, j;
 	      struct macro_line **current_line;
+	      unsigned int tokens[10][2]; /* list of indices into buffer string to identify tokens. 10 should be enough.*/
+	      unsigned int state, tc, ts, te;
+	      unsigned int minlen;
+
+	      struct macro_arg **last_arg;
+
 	      for (current_line = &firstmacro->lines; *current_line;
 		   current_line = &(*current_line)->next)
 		{
@@ -1786,49 +1521,97 @@ assemble (void)
 		}
 	      (*current_line)->next = NULL;
 	      (*current_line)->args = NULL;
-	      (*current_line)->line = malloc (strlen (buffer) + 1);
-	      if (!(*current_line)->line)
-		{
-		  printerr (1, "out of memory\n");
-		  free (*current_line);
-		  *current_line = NULL;
-		  continue;
+	      (*current_line)->line = -1;
+
+	      last_arg = &(*current_line)->args;
+
+	      /* Half-tokenized search rputine to speed up arg search.
+		 Parameter names should be normal identifiers following
+		 the scheme [_a-zA-Z][_a-zA-Z0-9]+, and should better not 
+		 contain each other or be too short.
+		 There is a fundamental problem here with
+		 badly chosen parameter names that might clobber the line completely.
+		 Say, macro a,b for example, which will replace all occurences of
+		 the letters a and b in the following lines. Very bad...
+	      */
+
+	      ts = 0;
+	      tc = 0;
+	      te = 0;
+	      i = 0;
+	      state = 0;
+
+	      while(i < strlen(buffer)) {
+		if(strchr(" \t,;",buffer[i])) {
+		  if(state == 1) {
+		    tokens[tc][0] = ts;
+		    tokens[tc][1] = (te - ts + 1);
+		    tc++;
+		  }
+		  state = 0;
+		} else if(state == 0 && (isalpha(buffer[i]) || buffer[i] == '_')) {
+		  state = 1;
+		  ts = i;
+		} else if(state == 1 && (isalnum(buffer[i]) || buffer[i] == '_')) {
+		  te = i;
 		}
-	      ptr = buffer;
-	      newptr = (*current_line)->line;
-	      while (*ptr)
-		{
+		i++;
+	      }
+
+	      minlen = tokens[i][1];
+
+	      for (i = 0; i < firstmacro->numargs; ++i) {
+		unsigned int il = strlen(stringstore_get(firstmacro->args[i]));
+		
+		if (il < minlen) minlen = il;
+	      }
+
+	      for(i=0; i < tc; i++) {
 		  unsigned p;
-		  struct macro_arg **last_arg = &(*current_line)->args;
-		  for (p = 0; p < firstmacro->numargs; ++p)
-		    {
-		      if (strncmp (ptr, firstmacro->args[p],
-				   strlen (firstmacro->args[p])) == 0)
-			{
-			  struct macro_arg *newarg;
-			  newarg = malloc (sizeof (struct macro_arg));
-			  if (!newarg)
-			    {
-			      printerr (1, "out of memory\n");
-			      break;
-			    }
-			  newarg->next = NULL;
-			  *last_arg = newarg;
-			  last_arg = &newarg->next;
-			  newarg->pos = newptr - (*current_line)->line;
-			  newarg->which = p;
-			  /* leave one character so two macros following each
-			   * other keep their order. */
-			  ptr += strlen (firstmacro->args[p]) - 1;
+
+		  for(j = tokens[i][0]; j < tokens[i][0] + tokens[i][1] - minlen; j++) {
+		    for (p = 0; p < firstmacro->numargs; ++p) {
+		      unsigned int len;
+		      const char *arg = stringstore_get(firstmacro->args[p]);
+
+		      len = strlen(arg);
+
+		      /* find the macro parameter names in the current buffer line.
+			 Watch out: If one argument is called P_1 and another P_12, 
+			 the result wil depend on the
+			 definition sequence... 
+			 TODO: tokenize input stream completely to get cleanly separated items.
+		      */
+		      if (!strncmp (&buffer[j], arg, len)) {
+			struct macro_arg *newarg;
+
+			newarg = malloc (sizeof (struct macro_arg));
+
+			if (!newarg) {
+			  printerr (1, "out of memory\n");
 			  break;
 			}
+			newarg->next = NULL;
+			*last_arg = newarg;
+			last_arg = &newarg->next;
+			newarg->pos = j;
+			newarg->which = p;
+			/* leave one character so two macros following each
+			 * other keep their order. */
+			/* this leaves '1' from a parameter called 'arg1' ?!? */
+			j += len - 1;
+			break;
+		      }
 		    }
-		  *newptr++ = *ptr++;
-		}
-	      *newptr = 0;
+		  }
+	      }
+
+	      (*current_line)->line = stringstore_add(buffer, strlen(buffer));
+
 	      if (verbose >= 7)
 		fprintf (stderr, "added line to macro (cmd = %d): %s\n", cmd,
-			 (*current_line)->line);
+			 stringstore_get((*current_line)->line));
+
 	      if (cmd == ENDM)
 		define_macro = 0;
 	      continue;
@@ -1962,11 +1745,11 @@ assemble (void)
 		{
 		  if (lastlabel->valid)
 		    fprintf (stderr, "Assigned value %d to label %s.\n",
-			     lastlabel->value, lastlabel->name);
+			     lastlabel->value, stringstore_get(lastlabel->name));
 		  else
 		    fprintf (stderr,
 			     "Scheduled label %s for later computation.\n",
-			     lastlabel->name);
+			     stringstore_get(lastlabel->name));
 		}
 	      ptr = "";
 	      break;
@@ -2419,7 +2202,13 @@ assemble (void)
 		      ++ptr;
 		      while (*ptr != quote)
 			{
-			  write_one_byte (rd_character (&ptr, NULL, 1), 0);
+			  /* work around weirdness in rd_character */
+			  if(ptr[0] == '\\' && (ptr[1] == '\'' || ptr[1] == '\"')) {
+			    write_one_byte (ptr[1], 0);
+			    ptr += 2;
+			  } else {
+			      write_one_byte (rd_character (&ptr, NULL, 1), 0);
+			  }
 			  if (*ptr == 0)
 			    {
 			      printerr (1, "end of line in quoted string\n");
@@ -2438,6 +2227,7 @@ assemble (void)
 		  if (*ptr == ',')
 		    {
 		      ++ptr;
+		      ptr = delspc (ptr);
 		      continue;
 		    }
 		  if (*ptr != 0)
@@ -2508,33 +2298,35 @@ assemble (void)
 		      fprintf (stderr, "Stack dump:\nframe  line file\n");
 		      for (x = 0; x < MAX_INCLUDE; ++x)
 			fprintf (stderr, "%5d %5d %s\n", x, stack[x].line,
-				 stack[x].name);
+				 stringstore_get(stack[x].name));
 		    }
 		  break;
 		}
 	      {
 		struct name *name;
-		char *nm = get_include_name (&ptr);
-		if (!nm)
+		const char *namestr;
+		int nm = get_include_name (&ptr);
+		if (nm < 0)
 		  break;
-		name = malloc (sizeof (struct name) + strlen (nm));
+
+		name = malloc (sizeof (struct name));
 		if (!name)
 		  {
 		    printerr (1, "out of memory while allocating name\n");
-		    free (nm);
 		    break;
 		  }
-		strcpy (name->name, nm);
-		free (nm);
+		name->name = nm;
+
+		namestr = stringstore_get(name->name);
 		++sp;
 		stack[sp].name = name->name;
 		stack[sp].shouldclose = 1;
 		stack[sp].line = 0;
-		stack[sp].file = open_include_file (name->name,
+		stack[sp].file = open_include_file (namestr,
 						    &stack[sp].dir, "r");
 		if (!stack[sp].file)
 		  {
-		    printerr (1, "unable to open file %s\n", name->name);
+		    printerr (1, "unable to open file %s\n", namestr);
 		    free (name);
 		    --sp;
 		    break;
@@ -2545,20 +2337,19 @@ assemble (void)
 		  name->next->prev = name;
 		firstname = name;
 		if (verbose >= 4)
-		  fprintf (stderr, "Reading file %s\n", name->name);
+		  fprintf (stderr, "Reading file %s\n", namestr);
 	      }
 	      break;
 	    case INCBIN:
 	      {
 		FILE *incfile;
-		char *name = get_include_name (&ptr);
-		if (!name)
+		int name = get_include_name (&ptr);
+		if (name < 0)
 		  break;
-		incfile = open_include_file (name, NULL, "rb");
+		incfile = open_include_file (stringstore_get(name), NULL, "rb");
 		if (!incfile)
 		  {
-		    printerr (1, "unable to open binary file %s\n", name);
-		    free (name);
+		    printerr (1, "unable to open binary file %s\n", stringstore_get(name));
 		    break;
 		  }
 		while (1)
@@ -2570,14 +2361,13 @@ assemble (void)
 		    if (num != fwrite (filebuffer, 1, num, outfile))
 		      {
 			printerr (1, "error including binary file %s: %s\n",
-				  name, strerror (errno));
+				  stringstore_get(name), strerror (errno));
 			break;
 		      }
 		    addr += num;
 		    addr &= 0xffff;
 		  }
 		fclose (incfile);
-		free (name);
 		break;
 	      }
 	    case IF:
@@ -2621,7 +2411,7 @@ assemble (void)
 		struct macro *m;
 		for (m = firstmacro; m; m = m->next)
 		  {
-		    if (strcmp (m->name, lastlabel->name) == 0)
+		    if (m->name == lastlabel->name)
 		      {
 			printerr (1, "duplicate macro definition\n");
 			break;
@@ -2633,14 +2423,8 @@ assemble (void)
 		    printerr (1, "out of memory\n");
 		    break;
 		  }
-		m->name = malloc (strlen (lastlabel->name) + 1);
-		if (!m->name)
-		  {
-		    printerr (1, "out of memory\n");
-		    free (m);
-		    break;
-		  }
-		strcpy (m->name, lastlabel->name);
+		m->name = lastlabel->name;
+
 		if (lastlabel->prev)
 		  lastlabel->prev->next = lastlabel->next;
 		else
@@ -2652,6 +2436,7 @@ assemble (void)
 		firstmacro = m;
 		m->lines = NULL;
 		m->numargs = get_macro_args (&ptr, &m->args, 0);
+		m->labels = NULL;
 		define_macro = 1;
 	      }
 	      break;
@@ -2665,8 +2450,8 @@ assemble (void)
 		if (verbose >= 2)
 		  {
 		    fprintf (stderr, "%s%s:%d: ",
-			     stack[sp].dir ? stack[sp].dir->name : "",
-			     stack[sp].name, stack[sp].line);
+			     stack[sp].dir ? stringstore_get(stack[sp].dir->name) : "",
+			     stringstore_get(stack[sp].name), stack[sp].line);
 		    fprintf (stderr, "[Message] seeking to 0x%0X \n",
 			     seekaddr);
 		  }
@@ -2678,9 +2463,12 @@ assemble (void)
 		struct macro *m;
 		for (m = firstmacro; m; m = m->next)
 		  {
-		    if (strncmp (m->name, ptr, strlen (m->name)) == 0)
+		    const char *mname = stringstore_get(m->name);
+		    if (strncmp (mname, ptr, strlen (mname)) == 0)
 		      {
 			unsigned numargs;
+			struct label *macrolocals, *next_label;
+
 			if (sp + 1 >= MAX_INCLUDE)
 			  {
 			    printerr (1, "stack overflow (circular include?)\n");
@@ -2691,22 +2479,22 @@ assemble (void)
 					 "Stack dump:\nframe  line file\n");
 				for (x = 0; x < MAX_INCLUDE; ++x)
 				  fprintf (stderr, "%5d %5d %s\n", x,
-					   stack[x].line, stack[x].name);
+					   stack[x].line, stringstore_get(stack[x].name));
 			      }
 			    break;
 			  }
 			++sp;
-			ptr += strlen (m->name);
+
+			if (verbose >= 7) fprintf(stderr, "adding stack level %d\n", sp);
+			ptr += strlen (mname);
 			numargs = get_macro_args (&ptr, &stack[sp].macro_args,
 						  1);
 			if (numargs != m->numargs)
 			  {
-			    unsigned a;
 			    printerr (1, "invalid number of arguments for macro "
 				      "(is %d, must be %d)\n", numargs,
 				      m->numargs);
-			    for (a = 0; a < numargs; ++a)
-			      free (stack[sp].macro_args[a]);
+
 			    free (stack[sp].macro_args);
 			    break;
 			  }
@@ -2717,6 +2505,37 @@ assemble (void)
 			stack[sp].macro_line = m->lines;
 			stack[sp].shouldclose = 0;
 			stack[sp].dir = NULL;
+			stack[sp].labels = NULL;
+
+			macrolocals = m->labels;
+
+			next_label = stack[sp].labels;
+
+			while(macrolocals) {
+			  char *p = (char *) &(macrolocals->name);
+			  struct label *copy_label;
+			  int struct_len;
+
+			  while(*p++);
+
+			  struct_len = p - (char *) macrolocals;
+			  copy_label = malloc(struct_len);
+			  if (!copy_label) {
+			    printerr (1, "out of memory\n");
+			    break;
+			  } else if(verbose >= 7) {
+			    fprintf(stderr, "Copying macro local label %s to stack level %d\n", stringstore_get(macrolocals->name), sp);
+			  }
+			  
+			  memcpy(copy_label, macrolocals, struct_len);
+
+			  copy_label->next = next_label;
+			  if (next_label) {
+			    next_label->prev = copy_label;
+			  }
+			  next_label = copy_label;
+			  macrolocals = macrolocals->next;
+			}
 			break;
 		      }
 		  }
@@ -2754,7 +2573,6 @@ assemble (void)
 	wrt_ref (ref, tmp->type, tmp->count);
 	if (tmp->dir)
 	  free (tmp->dir);
-	free (tmp->file);
 	free (tmp);
       }
   }
@@ -2775,7 +2593,7 @@ assemble (void)
 	}
       if (label)
 	{
-	  fprintf (labelfile, "%s%s:\tequ $%04x\n", labelprefix, l->name,
+	  fprintf (labelfile, "%s%s:\tequ $%04x\n", labelprefix, stringstore_get(l->name),
 		   l->value);
 	}
     }
@@ -2799,32 +2617,3 @@ assemble (void)
   free (infile);
 }
 
-int
-main (int argc, char **argv)
-{
-  /* default include file location */
-  add_include ("/usr/share/z80asm/headers/");
-  parse_commandline (argc, argv);
-  if (verbose >= 1)
-    fprintf (stderr, "Assembling....\n");
-  assemble ();
-  if (errors)
-    {
-      if (errors == 1)
-	fprintf (stderr, "*** 1 error found ***\n");
-      else
-	fprintf (stderr, "*** %d errors found ***\n", errors);
-      if (realoutputfile == outfile && !use_force)
-	{
-	  unlink (realoutputfilename);
-	  unlink (labelfilename);
-	}
-      return 1;
-    }
-  else
-    {
-      if (verbose >= 1)
-	fprintf (stderr, "Assembly succesful.\n");
-      return 0;
-    }
-}

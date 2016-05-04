@@ -1,5 +1,6 @@
-# Makefile using z80asm
-# Copyright 2007  Bas Wijnen <wijnen@debian.org>
+# Makefile.ac for the Z80 assembler
+#
+# Author: P Kollner <peter@asgalon.net>
 #
 # This file is part of z80asm.
 #
@@ -16,17 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# The output of the assembler can be parsed by vim or emacs.
-
-all: pass
-
-%: %.asm %.correct-err %.correct-bin ../z80asm Makefile
-	../z80asm -I ../headers $< -o $@.bin 2> $@.err
-	diff $@.correct-bin $@.bin
-	diff $@.correct-err $@.err
-	rm $@.bin $@.err
-
-clean:
-	rm -f *-actual.err *.bin
-
-.PHONY: clean all
+noinst_LIBRARIES = libgetopt.a
+libgetopt_a_SOURCES = 
+libgetopt_a_LIBADD = $(LIBOBJS) $(GETOPT) $(GETOPT_LONG)

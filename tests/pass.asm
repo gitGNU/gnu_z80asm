@@ -16,6 +16,25 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+	;;  macro handling
+testm1:	macro
+	nop
+	endm
+
+testm2:	macro arg
+	xor arg
+	endm
+
+testm3:	macro arg1,arg2
+	ex arg1,arg2
+	endm
+
+testm4:	macro
+	ld b, 0x04
+.lbl:	ld a,b
+	djnz .lbl
+	endm
+
 	; Some constructs which should compile properly
 
 	ld a, (0xc0)
@@ -37,3 +56,14 @@
 label:
 	jr label + 2
 	db ';("', "'"
+
+	testm1			; should have no problem
+	testm2 a		; one argument, simple
+	testm3 (sp),hl		; two arguments, should not give empty parameter error
+	testm4			; .lbl should be resolved correctly
+	testm4			; scope of .lbl..
+	
+data:
+	db 0x01, 0x02, ' T\'is a test...'
+	db 0xff, "What does \"quote\" mean?"
+	

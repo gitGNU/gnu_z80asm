@@ -1,5 +1,6 @@
-# Makefile using z80asm
-# Copyright 2005-2007  Bas Wijnen
+# Makefile.am for the Z80 assembler
+#
+# Author: P Kollner <peter@asgalon.net>
 #
 # This file is part of z80asm.
 #
@@ -16,10 +17,4 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-# The output of the assembler can be parsed by vim or emacs.
-
-all: hello.rom macro.rom
-
-%.rom: %.asm
-	z80asm $< -o $@
+SUBDIRS = man

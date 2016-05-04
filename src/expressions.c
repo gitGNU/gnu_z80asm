@@ -21,6 +21,10 @@
 
 #include "z80asm.h"
 
+#include "label.h"
+
+#include "stack.h"
+#include "stringstore.h"
 /* reading expressions. The following operators are supported
  * in order of precedence, with function name:
  * expr?expr:expr do_rd_expr
@@ -193,13 +197,16 @@ check_label (struct label *labels, const char **p, struct label **ret,
     {
     }
   s2 = c - *p;
+
+  /* TODO lookup structures */
   for (l = labels; l; l = l->next)
     {
       unsigned s1, s;
       int cmp;
-      s1 = strlen (l->name);
+      if(verbose >=7) fprintf(stderr, "comparing %s to %s\n", *p, stringstore_get(l->name));
+      s1 = strlen (stringstore_get(l->name));
       s = s1 < s2 ? s1 : s2;
-      cmp = strncmp (l->name, *p, s);
+      cmp = strncmp (stringstore_get(l->name), *p, s);
       if (cmp > 0 || (cmp == 0 && s1 > s))
 	{
 	  if (force_skip)
@@ -225,7 +232,7 @@ check_label (struct label *labels, const char **p, struct label **ret,
 	      if (verbose >= 6)
 		fprintf (stderr,
 			 "%5d (0x%04x): returning invalid label %s.\n",
-			 stack[sp].line, addr, l->name);
+			 stack[sp].line, addr, stringstore_get(l->name));
 	      *ret = l;
 	      return 0;
 	    }
@@ -253,6 +260,9 @@ rd_label (const char **p, int *exists, struct label **previous, int level,
 	     stack[sp].line, addr, *p);
   for (s = level; s >= 0; --s)
     {
+      if (verbose >= 7)
+	fprintf (stderr, "Checking level %d\n", level);
+
       if (check_label (stack[s].labels, p, &l,
 		       (**p == '.' && s == sp) ? previous : NULL, 0))
 	break;
@@ -269,7 +279,7 @@ rd_label (const char **p, int *exists, struct label **previous, int level,
 	    printerr (1, "using undefined label %.*s\n", *p - old_p, old_p);
 	  /* Return a value to discriminate between non-existing and invalid */
 	  if (verbose >= 7)
-	    fprintf (stderr, "rd_label returns invalid value\n");
+	    fprintf (stderr, "rd_label says: New or unknown label %.*s\n", (int) (*p-old_p), old_p);
 	  return l != NULL;
 	}
     }

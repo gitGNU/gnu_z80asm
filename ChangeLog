@@ -1,3 +1,15 @@
+2016-05-04  Peter Kollner <peter@asgalon.net>
+	* Rearranged code in directories
+	* added autoconf/automake support
+	* z80asm.c refactored the file in a number of source and header files in src and include subdirs
+	* fixed a bug in macro parameter handling for more than one parameter
+	* fixed anothe rbug with local labels in macros
+	* fixed a bug with whitespace after comma in defb lists inhibited string parsing
+	* added quote escape support in string data (a bit ugly, perhaps)
+	* added string storage facility to improve memory and label management
+	* added new test lines  for macro testing
+	* rearranged headers and documentation files foor autoconf install procedure
+	
 2009-04-11  Bas Wijnen  <wijnen@debian.org>
 
 	* z80asm.c: Fixed bug that defw/dw didn't accept more than one
