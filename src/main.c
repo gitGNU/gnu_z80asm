@@ -66,7 +66,8 @@ parse_commandline (int argc, char **argv)
 		  "Copyright (C) 2005 Jan Wilmans "
 		  "<jw@dds.nl>.\n"
 		  "Contributors\n"
-		  "2016 Peter Kollner <peter@asgalon.net>"
+		  "2016 Peter Kollner <peter@asgalon.net>\n"
+		  "\n"
 		  "This program comes with ABSOLUTELY NO WARRANTY.\n"
 		  "You may distribute copies of the program under the terms\n"
 		  "of the GNU General Public License as published by\n"
@@ -138,7 +139,7 @@ main (int argc, char **argv)
   stringstore_init();
 
   /* default include file location */
-  add_include ("/usr/share/z80asm/headers/");
+  add_include (PKGDATADIR "/headers/");
   parse_commandline (argc, argv);
   if (verbose >= 1)
     fprintf (stderr, "Assembling....\n");

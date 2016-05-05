@@ -18,6 +18,6 @@
 
 bin_PROGRAMS = z80asm
 
-z80asm_CFLAGS = -O0 -Wall -Wwrite-strings -Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls -Wnested-externs -Winline -pedantic -ansi -Wshadow -ggdb3 -W -DVERSION="\"$(PACKAGE_VERSION)\""
+z80asm_CFLAGS = -O0 -Wall -Wwrite-strings -Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls -Wnested-externs -Winline -pedantic -ansi -Wshadow -ggdb3 -W -DVERSION="\"$(PACKAGE_VERSION)\"" -DPKGDATADIR="\"${pkgdatadir}\""
 
 z80asm_SOURCES = main.c files.c stack.c z80asm.c expressions.c stringstore.c error.c
