@@ -1,3 +1,5 @@
+TAGS
+**/#*#
 **/*.o
 **/*.rom
 **/*~
@@ -6,6 +8,7 @@
 *.cache
 *.log
 *.status
+m4
 compile
 configure
 depcomp
@@ -24,3 +27,5 @@ include/config.h
 include/config.h.in
 include/stamp-h1
 config.*
+po/Makefile.in.in
+po/Makevars.template

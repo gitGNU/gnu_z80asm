@@ -10,6 +10,7 @@
 #include "files.h"
 #include "error.h"
 #include "stringstore.h"
+#include "gettext.h"
 
 /* number of infiles in array */
 int infilecount;
@@ -43,65 +44,65 @@ parse_commandline (int argc, char **argv)
 	{
 	case 'h':
 	  /* split in two, to avoid too long string constant */
-	  printf ("Usage: %s [options] [input files]\n"
-		  "\n"
-		  "Possible options are:\n"
-		  "-h\t--help\t\tDisplay this help text and exit.\n"
-		  "-V\t--version\tDisplay version information and exit.\n"
-		  "-v\t--verbose\tBe verbose.  "
-		  "Specify again to be more verbose.\n"
-		  "-l\t--list\t\tWrite a list file.\n"
-		  "-L\t--label\t\tWrite a label file.\n", argv[0]);
-	  printf ("-p\t--label-prefix\tprefix all labels with this prefix.\n"
-		  "-i\t--input\t\tSpecify an input file (-i may be omitted).\n"
-		  "-o\t--output\tSpecify the output file.\n"
-		  "-I\t--includepath\tAdd a directory to the include path.\n"
-		  "Please send bug reports and feature requests to "
-		  "<shevek@fmf.nl>\n");
+	  printf (gettext("Usage: %s [options] [input files]\n"
+		    "\n"
+		    "Possible options are:\n"
+		    "-h\t--help\t\tDisplay this help text and exit.\n"
+		    "-V\t--version\tDisplay version information and exit.\n"
+		    "-v\t--verbose\tBe verbose.  "
+		    "Specify again to be more verbose.\n"
+		    "-l\t--list\t\tWrite a list file.\n"
+		    "-L\t--label\t\tWrite a label file.\n"), argv[0]);
+	  printf (gettext("-p\t--label-prefix\tprefix all labels with this prefix.\n"
+		    "-i\t--input\t\tSpecify an input file (-i may be omitted).\n"
+		    "-o\t--output\tSpecify the output file.\n"
+		    "-I\t--includepath\tAdd a directory to the include path.\n"
+		    "Please send bug reports and feature requests to "
+		    "<shevek@fmf.nl>\n"));
 	  exit (0);
 	case 'V':
-	  printf ("Z80 assembler version " VERSION "\n"
-		  "Copyright (C) 2002-2007 Bas Wijnen "
-		  "<shevek@fmf.nl>.\n"
-		  "Copyright (C) 2005 Jan Wilmans "
-		  "<jw@dds.nl>.\n"
-		  "Contributors\n"
-		  "2016 Peter Kollner <peter@asgalon.net>\n"
-		  "\n"
-		  "This program comes with ABSOLUTELY NO WARRANTY.\n"
-		  "You may distribute copies of the program under the terms\n"
-		  "of the GNU General Public License as published by\n"
-		  "the Free Software Foundation; either version 2 of the\n"
-		  "License, or (at your option) any later version.\n\n"
-		  "The complete text of the GPL can be found in\n"
-		  "/usr/share/common-licenses/GPL.\n");
+	  printf (gettext("Z80 assembler version " VERSION "\n"
+		    "Copyright © 2002-2007 Bas Wijnen "
+		    "<shevek@fmf.nl>.\n"
+		    "Copyright © 2005 Jan Wilmans "
+		    "<jw@dds.nl>.\n"
+		    "Contributors\n"
+		    "2016 Peter Kollner <peter@asgalon.net>\n"
+		    "\n"
+		    "This program comes with ABSOLUTELY NO WARRANTY.\n"
+		    "You may distribute copies of the program under the terms\n"
+		    "of the GNU General Public License as published by\n"
+		    "the Free Software Foundation; either version 2 of the\n"
+		    "License, or (at your option) any later version.\n\n"
+		    "The complete text of the GPL can be found in\n"
+		    "/usr/share/common-licenses/GPL.\n"));
 	  exit (0);
 	case 'v':
 	  verbose++;
 	  if (verbose >= 5)
-	    fprintf (stderr, "Verbosity increased to level %d\n", verbose);
+	    fprintf (stderr, gettext("Verbosity increased to level %d\n"), verbose);
 	  break;
 	case 'o':
 	  realoutputfile
-	    = openfile (&out, "output file", stdout, optarg, "wb");
+	    = openfile (&out, gettext("output file"), stdout, optarg, "wb");
 	  realoutputfilename = optarg;
 	  if (verbose >= 5)
-	    fprintf (stderr, "Opened outputfile\n");
+	    fprintf (stderr, gettext("Opened outputfile\n"));
 	  break;
 	case 'i':
 	  open_infile (optarg);
 	  break;
 	case 'l':
 	  reallistfile
-	    = openfile (&havelist, "list file", stderr, optarg, "w");
+	    = openfile (&havelist, gettext("list file"), stderr, optarg, "w");
 	  if (verbose >= 5)
-	    fprintf (stderr, "Opened list file\n");
+	    fprintf (stderr, gettext("Opened list file\n"));
 	  break;
 	case 'L':
-	  labelfile = openfile (&label, "label file", stderr, optarg, "w");
+	  labelfile = openfile (&label, gettext("label file"), stderr, optarg, "w");
 	  labelfilename = optarg;
 	  if (verbose >= 5)
-	    fprintf (stderr, "Opened label file\n");
+	    fprintf (stderr, gettext("Opened label file\n"));
 	  break;
 	case 'p':
 	  labelprefix = optarg;
@@ -125,7 +126,7 @@ parse_commandline (int argc, char **argv)
   if (!infilecount)
     open_infile ("-");
   if (!out)
-    realoutputfile = openfile (&out, "output file", stdout, "a.bin", "wb");
+    realoutputfile = openfile (&out, gettext("output file"), stdout, "a.bin", "wb");
   try_use_real_file (realoutputfile, &outfile);
   if (havelist)
     try_use_real_file (reallistfile, &listfile);
@@ -136,20 +137,25 @@ main (int argc, char **argv)
 {
   int ret;
 
+  /* set up gettext */
+  setlocale (LC_ALL, "");
+  bindtextdomain (PACKAGE, LOCALEDIR);
+  textdomain (PACKAGE);
+
   stringstore_init();
 
   /* default include file location */
   add_include (PKGDATADIR "/headers/");
   parse_commandline (argc, argv);
   if (verbose >= 1)
-    fprintf (stderr, "Assembling....\n");
+    fprintf (stderr, gettext("Assembling....\n"));
   assemble ();
   if (errors)
     {
       if (errors == 1)
-	fprintf (stderr, "*** 1 error found ***\n");
+	fprintf (stderr, gettext("*** 1 error found ***\n"));
       else
-	fprintf (stderr, "*** %d errors found ***\n", errors);
+	fprintf (stderr, gettext("*** %d errors found ***\n") , errors);
       if (realoutputfile == outfile && !use_force)
 	{
 	  unlink (realoutputfilename);
@@ -160,7 +166,7 @@ main (int argc, char **argv)
   else
     {
       if (verbose >= 1)
-	fprintf (stderr, "Assembly succesful.\n");
+	fprintf (stderr, gettext("Assembly succesful.\n"));
       ret = 0;
     }
 

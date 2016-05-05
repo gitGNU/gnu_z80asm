@@ -16,16 +16,18 @@ AC_CHECK_HEADERS([libintl.h locale.h stdlib.h string.h strings.h unistd.h wchar.
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T
-
 # Replacement for missing getopt function
 AC_CONFIG_LIBOBJ_DIR([compat])
 
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
+AM_GNU_GETTEXT_VERSION([0.19.3])
+AM_GNU_GETTEXT([external])
+
 AC_CHECK_FUNCS([atexit memset strchr strerror getopt getopt_long])
 
-AC_CONFIG_FILES([Makefile
+AC_CONFIG_FILES([Makefile po/Makefile.in
                  examples/Makefile
                  compat/Makefile
                  src/Makefile

@@ -25,6 +25,8 @@
 #include "stack.h"
 #include "stringstore.h"
 
+#include "gettext.h"
+
 /* global variables */
 /* mnemonics, used as argument to indx() in assemble */
 const char *mnemonics[] = {
@@ -105,7 +107,7 @@ rd_comma (const char **p)
   *p = delspc (*p);
   if (**p != ',')
     {
-      printerr (1, "`,' expected. Remainder of line: %s\n", *p);
+      printerr (1, gettext("`,' expected. Remainder of line: %s\n"), *p);
       return;
     }
   *p = delspc ((*p) + 1);
@@ -142,7 +144,7 @@ indx (const char **ptr, const char **list, int error, const char **expr)
     {
       if (error)
 	{
-	  printerr (1, "unexpected end of line\n");
+	  printerr (1, gettext("unexpected end of line\n"));
 	  return 0;
 	}
       else
@@ -198,20 +200,24 @@ indx (const char **ptr, const char **list, int error, const char **expr)
 	}
       *ptr = input;
       if (verbose >= 4)
-	fprintf (stderr, "%5d (0x%04x): Piece of code found:%s\n",
-		 stack[sp].line, addr, list[i]);
+	fprintf (stderr, "%5d (0x%04x): %s%s\n",
+		 stack[sp].line, addr, 
+		 gettext("Piece of code found:"),
+		 list[i]);
       if (verbose >= 6)
-	fprintf (stderr, "%5d (0x%04x): Remainder of line=%s.\n",
-		 stack[sp].line, addr, *ptr);
+	fprintf (stderr, "%5d (0x%04x): %s=%s.\n",
+		 stack[sp].line, addr, 
+		 gettext("Remainder of line"),
+		 *ptr);
       comma++;
       return i + 1;
     }
   if (error)
     {
-      printerr (1, "parse error. Remainder of line=%s\n", *ptr);
+      printerr (1, gettext("parse error. Remainder of line=%s\n"), *ptr);
       if (verbose >= 3)
 	{
-	  fprintf (stderr, "When looking for any of:\n");
+	  fprintf (stderr, gettext("When looking for any of:\n"));
 	  for (i = 0; list[i]; i++)
 	    fprintf (stderr, "%s\t", list[i]);
 	  fprintf (stderr, "\n");
@@ -251,7 +257,7 @@ readlabel (const char **p, int store)
 
   if (pos == *p)
     {
-      printerr (1, "`:' found without a label");
+      printerr (1, gettext("`:' found without a label"));
       return;
     }
 
@@ -267,21 +273,21 @@ readlabel (const char **p, int store)
   j = rd_label (&dummy, &i, &previous, sp, 0);
   if (i || j)
     {
-      printerr (1, "duplicate definition of label %s\n", *p);
+      printerr (1, gettext("duplicate definition of label %s\n"), *p);
       *p = c;
       return;
     }
   if (NULL == (buf = malloc (sizeof (struct label) + c - *p)))
     {
-      printerr (1, "not enough memory to store label %s\n", *p);
+      printerr (1, gettext("not enough memory to store label %s\n"), *p);
       *p = c;
       return;
     }
   buf->name = stringstore_add(*p, c - *p - 1);
 
   if (verbose >= 3)
-    fprintf (stderr, "%5d (0x%04x): Label found: %s\n", stack[sp].line,
-	     addr, stringstore_get(buf->name));
+    fprintf (stderr, "%5d (0x%04x): %s: %s\n", stack[sp].line,
+	     addr, gettext("Label found"), stringstore_get(buf->name));
   *p = c;
   buf->value = addr;
   lastlabel = buf;
@@ -328,8 +334,10 @@ write_one_byte (int b, int list)
 {
   if (verbose >= 4)
     fprintf (stderr,
-	     "%5d (0x%04x): write_one_byte called with argument 0x%02x\n",
-	     stack[sp].line, addr, b);
+	     "%5d (0x%04x): %s 0x%02x\n",
+	     stack[sp].line, addr, 
+	     gettext("write_one_byte called with argument"),
+	     b);
   b &= 0xff;
   putc (b, outfile);
   if (list && havelist)
@@ -1272,14 +1280,26 @@ get_macro_args (const char **ptr, int **ret_args, int allow_empty)
       int *args;
       const char *start_arg, *end_arg;
       int arg_len;
+      char quote;
 
       *ptr = delspc (*ptr);
       if (!**ptr || **ptr == ';')
 	break;
       start_arg = *ptr;
-      /* increase pointer while name characters follow... */
-      while(**ptr && !isspace(**ptr) && **ptr != ',' && **ptr != ';') {
+      quote = '\0';
+
+      if (**ptr == '"' || **ptr == '\'') {
+	quote = **ptr;
+      }
+      /* increase pointer while name characters or string param follow... */
+      while(**ptr && (quote || !isspace(**ptr)) && **ptr != ',' && **ptr != ';') {
 	++*ptr;
+	/* string parameter ends with second quote. Test starting with second char*/
+	if(**ptr == quote) {
+	  quote = 0;
+	  ++*ptr;
+	  break;
+	}
       }
       end_arg = *ptr;
 

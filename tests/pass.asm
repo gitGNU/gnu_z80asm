@@ -66,4 +66,12 @@ label:
 data:
 	db 0x01, 0x02, ' T\'is a test...'
 	db 0xff, "What does \"quote\" mean?"
-	
+
+;;; These bugs are fixed and should assemble correctly now
+bug26772:	
+x:	macro arg
+	db arg
+	endm
+
+	org 0x8000
+	x 'mld ' 		; macro should handle string arg correctly

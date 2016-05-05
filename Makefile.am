@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-SUBDIRS = src . doc tests data
+SUBDIRS = po src . doc tests data
 
 owndist: clean
 	! git status | grep modified
@@ -30,3 +30,7 @@ owndist: clean
 	cd .. && gpg -b z80asm-$(VERSION).tar.gz
 	scp ../z80asm-$(VERSION).tar.gz* dl.sv.nongnu.org:/releases/z80asm/
 	git push
+
+ACLOCAL_AMFLAGS = -I m4
+
+EXTRA_DIST = config.rpath m4/ChangeLog
