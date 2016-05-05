@@ -1,1 +1,27 @@
 This is z80asm, the Z80 Macro Assembler by Bas Wijnen.
+
+How to install shevek's Z80 assembler
+
+To install z80asm from the sources, you'll need the GNU autotools installed.
+
+1. Preparation
+
+Run autoreconf -fis to prepare the build
+
+2. Configuration
+
+Run ./configure for a standard installation to prefix /usr/local, with asembler header files installed into
+/usr/local/share/z80asm. You can change the prefix by giving the --prefix=... parameter. For other options,
+please see ./configure --help
+
+3. Building the program
+
+make all
+
+builds the assembler and the documentation and runs tests.
+
+4. Installation
+
+sudo make install
+
+installs everything to the configured prefix.
