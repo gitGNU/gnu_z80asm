@@ -1,3 +1,7 @@
+2016-05-05  Peter Kollner <peter@asgalon.net>
+
+	* Fixed bug #26772
+
 2016-05-05  gettextize  <bug-gnu-gettext@gnu.org>
 
 	* configure.ac (AM_GNU_GETTEXT_VERSION): Bump to 0.19.3.
@@ -20,7 +24,7 @@
 	* added string storage facility to improve memory and label management
 	* added new test lines  for macro testing
 	* rearranged headers and documentation files foor autoconf install procedure
-	
+
 2009-04-11  Bas Wijnen  <wijnen@debian.org>
 
 	* z80asm.c: Fixed bug that defw/dw didn't accept more than one
