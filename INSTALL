@@ -1,9 +1,25 @@
 How to install shevek's Z80 assembler
 
-To compile:
-go to the source directory
-type ``make'' (without the quotes)
-On some systems, you may need gmake
+To install z80asm from the sources, you'll need the GNU autotools installed.
 
-To install, copy the file z80asm into your search path, for example in
-/usr/local/bin or in ~/bin (you may need to put this in the search path)
+1. Preparation
+
+Run autoreconf -fis to prepare the build
+
+2. Configuration
+
+Run ./configure for a standard installation to prefix /usr/local, with asembler header files installed into
+/usr/local/share/z80asm. You can change the prefix by giving the --prefix=... parameter. For other options,
+please see ./configure --help
+
+3. Building the program
+
+make all
+
+builds the assembler and the documentation and runs tests.
+
+4. Installation
+
+sudo make install
+
+installs everything to the configured prefix.
