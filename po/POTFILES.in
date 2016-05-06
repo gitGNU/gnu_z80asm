@@ -1,0 +1,7 @@
+../src/z80asm.c
+../src/stringstore.c
+../src/expressions.c
+../src/error.c
+../src/files.c
+../src/main.c
+../src/stack.c

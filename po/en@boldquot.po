@@ -31,8 +31,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: z80asm 1.9\n"
-"Report-Msgid-Bugs-To: Bas Wijnen <wijnen@debian.org>\n"
-"POT-Creation-Date: 2016-05-06 01:39+0200\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2016-05-06 01:59+0200\n"
 "PO-Revision-Date: 2016-05-05 17:42+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -42,56 +42,56 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/z80asm.c:110
+#: ../src/z80asm.c:110
 #, c-format
 msgid "`,' expected. Remainder of line: %s\n"
 msgstr ""
 
-#: src/z80asm.c:147
+#: ../src/z80asm.c:147
 msgid "unexpected end of line\n"
 msgstr ""
 
-#: src/z80asm.c:205
+#: ../src/z80asm.c:205
 msgid "Piece of code found:"
 msgstr ""
 
-#: src/z80asm.c:210
+#: ../src/z80asm.c:210
 msgid "Remainder of line"
 msgstr ""
 
-#: src/z80asm.c:217
+#: ../src/z80asm.c:217
 #, c-format
 msgid "parse error. Remainder of line=%s\n"
 msgstr ""
 
-#: src/z80asm.c:220
+#: ../src/z80asm.c:220
 #, c-format
 msgid "When looking for any of:\n"
 msgstr ""
 
-#: src/z80asm.c:260
+#: ../src/z80asm.c:260
 msgid "`:' found without a label"
 msgstr ""
 
-#: src/z80asm.c:276
+#: ../src/z80asm.c:276
 #, c-format
 msgid "duplicate definition of label %s\n"
 msgstr ""
 
-#: src/z80asm.c:282
+#: ../src/z80asm.c:282
 #, c-format
 msgid "not enough memory to store label %s\n"
 msgstr ""
 
-#: src/z80asm.c:290
+#: ../src/z80asm.c:290
 msgid "Label found"
 msgstr ""
 
-#: src/z80asm.c:339
+#: ../src/z80asm.c:339
 msgid "write_one_byte called with argument"
 msgstr ""
 
-#: src/main.c:47
+#: ../src/main.c:47
 #, c-format
 msgid ""
 "Usage: %s [options] [input files]\n"
@@ -104,7 +104,7 @@ msgid ""
 "-L\t--label\t\tWrite a label file.\n"
 msgstr ""
 
-#: src/main.c:56
+#: ../src/main.c:56
 #, c-format
 msgid ""
 "-p\t--label-prefix\tprefix all labels with this prefix.\n"
@@ -114,59 +114,59 @@ msgid ""
 "Please send bug reports and feature requests to <shevek@fmf.nl>\n"
 msgstr ""
 
-#: src/main.c:64
+#: ../src/main.c:64
 #, c-format
 msgid "Z80 assembler version "
 msgstr ""
 
-#: src/main.c:83
+#: ../src/main.c:83
 #, c-format
 msgid "Verbosity increased to level %d\n"
 msgstr ""
 
-#: src/main.c:87 src/main.c:129
+#: ../src/main.c:87 ../src/main.c:129
 msgid "output file"
 msgstr ""
 
-#: src/main.c:90
+#: ../src/main.c:90
 #, c-format
 msgid "Opened outputfile\n"
 msgstr ""
 
-#: src/main.c:97
+#: ../src/main.c:97
 msgid "list file"
 msgstr ""
 
-#: src/main.c:99
+#: ../src/main.c:99
 #, c-format
 msgid "Opened list file\n"
 msgstr ""
 
-#: src/main.c:102
+#: ../src/main.c:102
 msgid "label file"
 msgstr ""
 
-#: src/main.c:105
+#: ../src/main.c:105
 #, c-format
 msgid "Opened label file\n"
 msgstr ""
 
-#: src/main.c:151
+#: ../src/main.c:151
 #, c-format
 msgid "Assembling....\n"
 msgstr ""
 
-#: src/main.c:156
+#: ../src/main.c:156
 #, c-format
 msgid "*** 1 error found ***\n"
 msgstr "*** 1 error found ***\n"
 
-#: src/main.c:158
+#: ../src/main.c:158
 #, c-format
 msgid "*** %d errors found ***\n"
 msgstr "*** %d errors found ***\n"
 
-#: src/main.c:169
+#: ../src/main.c:169
 #, fuzzy, c-format
 msgid "Assembly succesful.\n"
 msgstr ""
