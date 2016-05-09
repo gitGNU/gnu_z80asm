@@ -1,3 +1,7 @@
+2016-05-09  Peter Kollner <peter@asgalon.net>
+
+	* Fixed detectiuon of nested macros
+
 2016-05-05  Peter Kollner <peter@asgalon.net>
 
 	* Fixed bug #26772

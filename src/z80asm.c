@@ -1526,13 +1526,27 @@ assemble (void)
 	      unsigned int tokens[10][2]; /* list of indices into buffer string to identify tokens. 10 should be enough.*/
 	      unsigned int state, tc, ts, te;
 	      unsigned int minlen;
+	      char *macrodef;
 
 	      struct macro_arg **last_arg;
+
+	      /* first of all, check for nested macros, which normally means user forgot an endm before. */
+	      macrodef = strstr(buffer, "macro");
+
+	      if (   macrodef
+		  && (macrodef == buffer || isspace(*(macrodef-1)) || *(macrodef-1) == ':')
+		  && (macrodef + 5 <= buffer + strlen(buffer))
+		  && (!macrodef[5] || strchr(" \t,;",macrodef[5]))) {
+		printerr(1, gettext("nested macro found in line %d - did you forget an endm?\n"), stack[sp].line);
+		break;
+	      }
 
 	      for (current_line = &firstmacro->lines; *current_line;
 		   current_line = &(*current_line)->next)
 		{
+		  /* proceed to last line */
 		}
+
 	      *current_line = malloc (sizeof (struct macro_line));
 	      if (!*current_line)
 		{
